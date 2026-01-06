@@ -56,6 +56,46 @@ Correctness is the primary gate for changes: kernels must match reference behavi
 
 ---
 
+## User guide (quickstart)
+
+Run a single op in Python:
+
+```bash
+uv run python - <<'PY'
+import torch
+import forge_cute_py
+
+x = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
+y = torch.ops.forge_cute_py.copy_transpose(x, 16)
+print(y.shape)
+PY
+```
+
+Run a smoke benchmark suite (JSON output):
+
+```bash
+uv run python bench/run.py --suite smoke --out results.json
+```
+
+Profile a kernel (Nsight Compute):
+
+```bash
+ncu --set full -o profiles/copy_transpose_profile \
+  uv run python -m forge_cute_py.env_check
+```
+
+---
+
+## Kernel status (v0.1)
+
+| Op | Status | Variants | Notes |
+| --- | --- | --- | --- |
+| copy_transpose | Implemented | tile=16/32 | CuTe DSL kernel in `forge_cute_py/kernels/copy_transpose.py` |
+| reduce_sum | Stub (ref) | naive/improved/shfl | CUDA path currently uses reference; kernel to be implemented |
+| softmax_online | Stub (ref) | single-pass | CUDA path currently uses reference; kernel to be implemented |
+
+---
+
 ## Package layout (high level)
 
 * `forge_cute_py/ops/`
@@ -85,4 +125,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 * [ ] Week 1 reductions: multiple variants, correctness + benchmark coverage
 * [ ] Week 2 online softmax: correctness + benchmark coverage + profiling notes
 * [ ] CI: run correctness on supported GPU runners; optional perf smoke checks
-
