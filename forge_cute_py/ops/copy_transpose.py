@@ -17,7 +17,7 @@ def _copy_transpose(x: torch.Tensor, tile_size: int = 16) -> torch.Tensor:
         Transposed tensor of shape (N, M)
     """
     if not x.is_cuda:
-        raise NotImplementedError("copy_transpose is CUDA-only")
+        raise NotImplementedError(f"copy_transpose is CUDA-only, got device={x.device}")
     if x.ndim != 2:
         raise ValueError("copy_transpose expects a 2D tensor")
 
