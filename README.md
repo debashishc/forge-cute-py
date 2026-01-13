@@ -63,7 +63,7 @@ Run a single op in Python:
 ```bash
 uv run python - <<'PY'
 import torch
-from forge_cute_py import copy_transpose
+from forge_cute_py.ops import copy_transpose
 
 x = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
 y = copy_transpose(x, tile_size=16)
@@ -71,8 +71,8 @@ print(y.shape)  # torch.Size([1024, 1024])
 PY
 ```
 
-Ops are also accessible via `torch.ops.forge_cute_py._op_name()` for custom op
-integration.
+Ops are also accessible via `torch.ops.forge_cute_py._op_name()` (note the
+underscore prefix) for direct custom op access.
 
 Run a smoke benchmark suite (JSON output):
 

@@ -2,6 +2,7 @@ import argparse
 
 import torch
 
+from forge_cute_py.ops import copy_transpose
 from forge_cute_py.util.bench import do_bench, estimate_bandwidth, summarize_times
 
 
@@ -18,17 +19,12 @@ def main():
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA required for benchmarking")
-    if not hasattr(torch.ops, "forge_cute_py") or not hasattr(
-        torch.ops.forge_cute_py, "copy_transpose"
-    ):
-        raise RuntimeError("torch.ops.forge_cute_py.copy_transpose not registered")
 
     dtype = getattr(torch, args.dtype)
     x = torch.randn(args.m, args.n, device="cuda", dtype=dtype)
-    op = torch.ops.forge_cute_py.copy_transpose
 
     def fn():
-        return op(x, args.tile_size)
+        return copy_transpose(x, tile_size=args.tile_size)
 
     times = do_bench(fn, warmup=args.warmup, rep=args.iterations)
     stats = summarize_times(times)

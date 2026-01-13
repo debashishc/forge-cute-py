@@ -6,6 +6,7 @@ from pathlib import Path
 import torch
 import yaml
 
+from forge_cute_py import ops
 from forge_cute_py.util.bench import do_bench, estimate_bandwidth, summarize_times
 
 
@@ -40,12 +41,6 @@ def _dtype_from_str(dtype_str: str) -> torch.dtype:
     return mapping[dtype_str]
 
 
-def _ops_namespace():
-    if not hasattr(torch.ops, "forge_cute_py"):
-        return None
-    return torch.ops.forge_cute_py
-
-
 def _estimate_bytes(op: str, shape, dtype: torch.dtype, dim=None):
     elem_size = torch.tensor([], dtype=dtype).element_size()
     numel = 1
@@ -58,22 +53,18 @@ def _estimate_bytes(op: str, shape, dtype: torch.dtype, dim=None):
 
 
 def _bench_case(case, warmup: int, iterations: int):
-    ops = _ops_namespace()
-    if ops is None:
-        return {"status": "skipped", "reason": "forge_cute_py ops not registered"}
-
     op_name = case["op"]
     dtype = _dtype_from_str(case.get("dtype", "float16"))
     shape = case.get("shape", [1024, 1024])
 
     if op_name == "copy_transpose":
         if not hasattr(ops, "copy_transpose"):
-            return {"status": "skipped", "reason": "copy_transpose not registered"}
+            return {"status": "skipped", "reason": "copy_transpose not available"}
         tile_size = case.get("tile_size", 16)
         x = torch.randn(*shape, device="cuda", dtype=dtype)
 
         def fn():
-            return ops.copy_transpose(x, tile_size)
+            return ops.copy_transpose(x, tile_size=tile_size)
 
         times = do_bench(fn, warmup=warmup, rep=iterations)
         stats = summarize_times(times)
@@ -91,13 +82,13 @@ def _bench_case(case, warmup: int, iterations: int):
 
     if op_name == "reduce_sum":
         if not hasattr(ops, "reduce_sum"):
-            return {"status": "skipped", "reason": "reduce_sum not registered"}
+            return {"status": "skipped", "reason": "reduce_sum not available"}
         dim = case.get("dim", -1)
         variant = case.get("variant", "shfl")
         x = torch.randn(*shape, device="cuda", dtype=dtype)
 
         def fn():
-            return ops.reduce_sum(x, dim, variant)
+            return ops.reduce_sum(x, dim=dim, variant=variant)
 
         try:
             times = do_bench(fn, warmup=warmup, rep=iterations)
@@ -119,12 +110,12 @@ def _bench_case(case, warmup: int, iterations: int):
 
     if op_name == "softmax_online":
         if not hasattr(ops, "softmax_online"):
-            return {"status": "skipped", "reason": "softmax_online not registered"}
+            return {"status": "skipped", "reason": "softmax_online not available"}
         dim = case.get("dim", -1)
         x = torch.randn(*shape, device="cuda", dtype=dtype)
 
         def fn():
-            return ops.softmax_online(x, dim)
+            return ops.softmax_online(x, dim=dim)
 
         times = do_bench(fn, warmup=warmup, rep=iterations)
         stats = summarize_times(times)
