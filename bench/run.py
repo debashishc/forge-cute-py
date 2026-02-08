@@ -158,6 +158,7 @@ def main():
     parser = argparse.ArgumentParser(description="forge-cute-py benchmark runner")
     parser.add_argument("--suite", default="smoke")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--op", default=None, help="Filter cases by op name")
     parser.add_argument("--suites", default=str(Path(__file__).parent / "suites.yaml"))
     args = parser.parse_args()
 
@@ -170,6 +171,10 @@ def main():
     warmup = int(suite.get("warmup", 10))
     iterations = int(suite.get("iterations", 50))
     cases = suite.get("cases", [])
+    if args.op:
+        cases = [case for case in cases if case.get("op") == args.op]
+        if not cases:
+            raise ValueError(f"No cases for op={args.op} in suite {args.suite}")
 
     results = {
         "suite": args.suite,

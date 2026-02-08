@@ -128,7 +128,19 @@ non-zero tolerance in tests.
 uv run python bench/run.py --suite smoke
 uv run python bench/benchmark_copy_transpose.py --tile-size 16
 uv run python bench/benchmark_reduce.py
+modal run bench/modal_bench.py --suite smoke --out results.json
+modal run bench/modal_bench.py --suite smoke --op reduce_sum --out results.json
 ```
+
+> **Warning:** Modal benchmarks incur GPU costs. Review `bench/modal_bench.py`
+> and verify timeout/GPU settings before running. Start with `--suite smoke`
+> to validate your setup. You are responsible for any credits consumed.
+
+Modal benchmarks run on B200 GPUs using CUDA 13.1 and PyTorch 2.9.1.
+
+Modal GPU types and CLI usage:
+https://modal.com/docs/guide/gpu
+https://modal.com/docs/reference/cli/run
 
 Add new benchmark cases to `bench/suites.yaml` and keep outputs reproducible.
 

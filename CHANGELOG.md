@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for float16, bfloat16, and float32 dtypes
 
 ### Changed
+- Modal benchmarks now use strict GPU matching (`!` suffix) for consistent hardware
 - **BREAKING:** Renamed `tile` parameter to `tile_size` in `copy_transpose` API (#5)
 - Modernized all ops to use two-function pattern: internal `_op_name` (mutates output) and public `op_name` (allocates + returns) (#12)
 - Updated `env_check` to use public API instead of `torch.ops` for testing

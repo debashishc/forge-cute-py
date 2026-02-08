@@ -151,7 +151,19 @@ uv run python bench/run.py --suite smoke              # Run benchmark suite
 uv run python bench/run.py --suite smoke --out out.json  # Save results
 uv run python bench/benchmark_copy_transpose.py       # Standalone benchmark
 uv run python bench/benchmark_reduce.py              # Standalone benchmark
+modal run bench/modal_bench.py --suite smoke --out results.json  # Remote run on B200 via Modal
 ```
+
+### Modal setup (remote benchmarks)
+```bash
+uv pip install modal
+modal token new
+modal run bench/modal_bench.py --suite smoke --out results.json
+modal run bench/modal_bench.py --suite smoke --op reduce_sum --out results.json
+```
+
+Modal benchmarks run on B200 GPUs using CUDA 13.1 and PyTorch 2.9.1.
+See https://modal.com/docs/guide/gpu for more info.
 
 ### Profiling
 ```bash
