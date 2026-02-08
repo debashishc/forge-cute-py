@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: README, DEVELOPMENT.md (#11), CONTRIBUTING.md with contribution policy (#7)
 - Pre-commit hooks installation instructions in CONTRIBUTING.md (#7)
 - Support for float16, bfloat16, and float32 dtypes
-- `FORGE_SOFTMAX_IMPL` softmax mode selection (`auto`, `ref`, `kernel`)
+- `softmax_online` backend registry APIs (`register/get/set/list`) with `ref` and `kernel` backends
 
 ### Changed
 - Modal benchmarks now use strict GPU matching (`!` suffix) for consistent hardware
@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced error messages with device information for better debugging
 - Set tolerance to 0 (exact comparison) for transpose correctness tests
 - Updated documentation to reflect current three-layer architecture and modern PyTorch patterns
-- Added `--impl` to `bench/benchmark_online_softmax.py` and updated benchmark handling for strict kernel mode
+- Added `--backend` to `bench/benchmark_online_softmax.py` and aligned benchmark handling with backend registry
+- Enforced strict `dim=-1` contract for `softmax_online` (row-wise only)
 
 ### Infrastructure
 - Package scaffolding with `pyproject.toml` and proper Python 3.13+ support

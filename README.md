@@ -84,8 +84,8 @@ Run a standalone benchmark:
 
 ```bash
 uv run python bench/benchmark_copy_transpose.py --tile-size 16
-uv run python bench/benchmark_online_softmax.py --impl auto
-uv run python bench/benchmark_online_softmax.py --impl kernel
+uv run python bench/benchmark_online_softmax.py --backend ref
+uv run python bench/benchmark_online_softmax.py --backend kernel
 ```
 
 Profile a kernel with helper script:
@@ -108,9 +108,9 @@ ncu --set full -o profiles/copy_transpose uv run python bench/benchmark_copy_tra
 | Op | Status | Variants | Notes |
 | --- | --- | --- | --- |
 | copy_transpose | Implemented | tile_size=16/32 | CuTe DSL kernel with tiled shared memory |
-| reduce | Implemented (sum only) | - | Placeholder (awaiting benchmarking) |
-| reduce_sum | Stub (ref) | - | Placeholder (awaiting benchmarking) |
-| softmax_online | Stub (ref) | single-pass | Reference-backed by default; `FORGE_SOFTMAX_IMPL` can force `ref` or strict `kernel` mode |
+| reduce | Implemented (sum only) | - | CuTe kernel with benchmark coverage |
+| reduce_sum | Stub (ref) | - | Reference path with benchmark coverage |
+| softmax_online | Implemented (registry) | ref, kernel | Default backend is `ref`; `kernel` is available for contributor benchmarking and remains non-production |
 
 ---
 
@@ -153,15 +153,19 @@ uv run python bench/run.py --suite smoke              # Run benchmark suite
 uv run python bench/run.py --suite smoke --out out.json  # Save results
 uv run python bench/benchmark_copy_transpose.py       # Standalone benchmark
 uv run python bench/benchmark_reduce.py               # Standalone benchmark
-uv run python bench/benchmark_online_softmax.py --impl auto    # softmax fwd+bwd (fallback allowed)
-uv run python bench/benchmark_online_softmax.py --impl kernel  # softmax fwd+bwd (hard fail if kernel missing)
+uv run python bench/benchmark_online_softmax.py --backend ref     # softmax fwd+bwd on reference backend
+uv run python bench/benchmark_online_softmax.py --backend kernel  # softmax fwd+bwd on CuTe kernel backend
 modal run bench/modal_bench.py --suite smoke --out results.json  # Remote run on B200 via Modal
 ```
 
-`softmax_online` mode is controlled by `FORGE_SOFTMAX_IMPL`:
-- `auto` (default): try kernel first, then fallback to reference.
-- `ref`: force reference implementation.
-- `kernel`: require kernel implementation and fail fast if unavailable.
+`softmax_online` backend selection is controlled via Python API or benchmark CLI:
+- Python API: `set_softmax_online_backend("ref")` or `set_softmax_online_backend("kernel")`
+- Benchmark CLI: `bench/benchmark_online_softmax.py --backend {ref,kernel}`
+
+Current softmax contract:
+- supported tensors: 2D CUDA
+- supported dtypes: `float16`, `bfloat16`, `float32`
+- supported dim: `dim=-1` (row-wise only)
 
 ### Modal setup (remote benchmarks)
 ```bash
