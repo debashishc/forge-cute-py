@@ -1,34 +1,31 @@
-import importlib
-
 import pytest
 import torch
 
-from forge_cute_py.ops import softmax_online
+from forge_cute_py.ops import (
+    get_softmax_online_backend,
+    list_softmax_online_backends,
+    register_softmax_online_backend,
+    set_softmax_online_backend,
+    softmax_online,
+)
 from forge_cute_py.ref import softmax_online as ref_softmax_online
-
-softmax_online_ops = importlib.import_module("forge_cute_py.ops.softmax_online")
 
 
 @pytest.fixture(autouse=True)
-def _reset_softmax_impl_env(monkeypatch):
-    monkeypatch.delenv("FORGE_SOFTMAX_IMPL", raising=False)
+def _restore_softmax_backend():
+    previous = get_softmax_online_backend()
+    try:
+        set_softmax_online_backend("ref")
+        yield
+    finally:
+        set_softmax_online_backend(previous)
 
 
-def _patch_missing_kernel_module(monkeypatch):
-    original_import_module = softmax_online_ops.importlib.import_module
-
-    def missing_kernel_module(name, *args, **kwargs):
-        if name == "forge_cute_py.kernels.softmax_online":
-            exc = ModuleNotFoundError(f"No module named '{name}'")
-            exc.name = name
-            raise exc
-        return original_import_module(name, *args, **kwargs)
-
-    monkeypatch.setattr(softmax_online_ops.importlib, "import_module", missing_kernel_module)
+dims = [-1]
 
 
 @pytest.mark.parametrize("shape", [(4, 8), (2, 128)])
-@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dim", dims)
 @pytest.mark.parametrize(
     "dtype, atol, rtol",
     [
@@ -46,8 +43,20 @@ def test_softmax_online_correctness(shape, dim, dtype, atol, rtol):
     assert torch.isfinite(y).all()
 
 
+def test_softmax_online_rejects_dim0():
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    with pytest.raises(ValueError, match="expects dim=-1"):
+        softmax_online(x, dim=0)
+
+
+def test_softmax_online_rejects_dim1():
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    with pytest.raises(ValueError, match="expects dim=-1"):
+        softmax_online(x, dim=1)
+
+
 @pytest.mark.parametrize("shape", [(4, 8), (2, 128)])
-@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dim", dims)
 @pytest.mark.parametrize(
     "dtype, atol, rtol",
     [
@@ -75,53 +84,6 @@ def test_softmax_online_torch_compile(shape, dim, dtype, atol, rtol):
         pytest.skip(f"torch.compile unsupported for softmax_online op: {exc}")
     y_ref = ref_softmax_online(x, dim=dim)
     torch.testing.assert_close(y, y_ref, atol=atol, rtol=rtol)
-
-
-def test_softmax_online_auto_falls_back_to_ref_when_kernel_missing(monkeypatch):
-    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "auto")
-    _patch_missing_kernel_module(monkeypatch)
-
-    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
-    y = softmax_online(x, dim=-1)
-    y_ref = ref_softmax_online(x, dim=-1)
-    torch.testing.assert_close(y, y_ref, atol=1e-2, rtol=1e-2)
-
-
-def test_softmax_online_kernel_mode_requires_kernel(monkeypatch):
-    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "kernel")
-    _patch_missing_kernel_module(monkeypatch)
-
-    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
-    with pytest.raises(NotImplementedError, match="FORGE_SOFTMAX_IMPL=kernel"):
-        softmax_online(x, dim=-1)
-
-
-def test_softmax_online_ref_mode_skips_kernel_probe(monkeypatch):
-    import_called = {"value": False}
-    original_import_module = softmax_online_ops.importlib.import_module
-
-    def tracking_import(name, *args, **kwargs):
-        if name == "forge_cute_py.kernels.softmax_online":
-            import_called["value"] = True
-            raise AssertionError("Kernel module should not be imported in ref mode")
-        return original_import_module(name, *args, **kwargs)
-
-    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "ref")
-    monkeypatch.setattr(softmax_online_ops.importlib, "import_module", tracking_import)
-
-    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
-    y = softmax_online(x, dim=-1)
-    y_ref = ref_softmax_online(x, dim=-1)
-
-    assert import_called["value"] is False
-    torch.testing.assert_close(y, y_ref, atol=1e-2, rtol=1e-2)
-
-
-def test_softmax_online_rejects_invalid_impl_mode(monkeypatch):
-    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "unknown")
-    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
-    with pytest.raises(ValueError, match="FORGE_SOFTMAX_IMPL"):
-        softmax_online(x, dim=-1)
 
 
 @pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32])
@@ -160,7 +122,7 @@ def test_softmax_online_extreme_values(input_dtype):
 
 
 @pytest.mark.parametrize("shape", [(4, 8), (16, 128), (32, 256)])
-@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dim", dims)
 @pytest.mark.parametrize(
     "dtype, atol, rtol",
     [
@@ -172,6 +134,7 @@ def test_softmax_online_extreme_values(input_dtype):
 def test_softmax_online_backward(shape, dim, dtype, atol, rtol):
     """Test backward pass against PyTorch reference."""
     # Create inputs with gradients enabled (scale by 0.1 to avoid overflow)
+
     x = (0.1 * torch.randn(*shape, device="cuda", dtype=dtype)).requires_grad_(True)
     x_ref = x.detach().clone().requires_grad_(True)
 
@@ -189,7 +152,7 @@ def test_softmax_online_backward(shape, dim, dtype, atol, rtol):
 
 
 @pytest.mark.parametrize("shape", [(4, 8), (16, 128)])
-@pytest.mark.parametrize("dim", [-1, 1])
+@pytest.mark.parametrize("dim", dims)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_softmax_online_backward_torch_compile(shape, dim, dtype):
     """Test backward pass works with torch.compile."""
@@ -246,3 +209,85 @@ def test_softmax_online_gradient_properties():
     # Row sums should be approximately zero (softmax Jacobian property)
     row_sums = dx.sum(dim=-1)
     torch.testing.assert_close(row_sums, torch.zeros_like(row_sums), atol=1e-6, rtol=1e-6)
+
+
+def test_softmax_online_backend_registry_exposes_expected_backends():
+    backends = list_softmax_online_backends()
+    assert "ref" in backends
+    assert "kernel" in backends
+
+
+@pytest.mark.parametrize(
+    "dtype, atol, rtol",
+    [
+        (torch.float16, 1e-2, 1e-2),
+        (torch.float32, 1e-4, 1e-4),
+    ],
+)
+def test_softmax_online_kernel_backend_forward_matches_ref(dtype, atol, rtol):
+    set_softmax_online_backend("kernel")
+
+    x = (0.1 * torch.randn(16, 128, device="cuda", dtype=dtype)).requires_grad_(True)
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x, dim=-1)
+    torch.testing.assert_close(y, y_ref, atol=atol, rtol=rtol)
+
+
+@pytest.mark.parametrize(
+    "dtype, atol, rtol",
+    [
+        (torch.float32, 1e-4, 1e-4),
+    ],
+)
+def test_softmax_online_kernel_backend_backward_matches_ref(dtype, atol, rtol):
+    set_softmax_online_backend("kernel")
+
+    x = (0.1 * torch.randn(16, 128, device="cuda", dtype=dtype)).requires_grad_(True)
+    x_ref = x.detach().clone().requires_grad_(True)
+
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x_ref, dim=-1)
+    dy = torch.randn_like(y)
+
+    torch.cuda.synchronize()
+    (dx,) = torch.autograd.grad(y, x, grad_outputs=dy)
+    (dx_ref,) = torch.autograd.grad(y_ref, x_ref, grad_outputs=dy)
+    torch.testing.assert_close(dx, dx_ref, atol=atol, rtol=rtol)
+
+
+def test_softmax_online_custom_backend_forward():
+    def custom_ref_forward(x: torch.Tensor, dim: int) -> torch.Tensor:
+        return ref_softmax_online(x, dim=dim)
+
+    register_softmax_online_backend("test_ref_forward", custom_ref_forward, overwrite=True)
+    set_softmax_online_backend("test_ref_forward")
+
+    x = torch.randn(16, 128, device="cuda", dtype=torch.float16)
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x, dim=-1)
+    torch.testing.assert_close(y, y_ref, atol=1e-2, rtol=1e-2)
+
+
+def test_softmax_online_custom_backend_backward_fallback():
+    def forward_only(x: torch.Tensor, dim: int) -> torch.Tensor:
+        return ref_softmax_online(x, dim=dim)
+
+    register_softmax_online_backend("test_fwd_only", forward_only, overwrite=True)
+    set_softmax_online_backend("test_fwd_only")
+
+    x = (0.1 * torch.randn(16, 128, device="cuda", dtype=torch.float32)).requires_grad_(True)
+    x_ref = x.detach().clone().requires_grad_(True)
+
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x_ref, dim=-1)
+
+    dy = torch.randn_like(y)
+    torch.cuda.synchronize()
+    (dx,) = torch.autograd.grad(y, x, grad_outputs=dy)
+    (dx_ref,) = torch.autograd.grad(y_ref, x_ref, grad_outputs=dy)
+    torch.testing.assert_close(dx, dx_ref, atol=1e-4, rtol=1e-4)
+
+
+def test_softmax_online_unknown_backend_raises():
+    with pytest.raises(ValueError, match="Unknown softmax_online backend"):
+        set_softmax_online_backend("missing_backend")

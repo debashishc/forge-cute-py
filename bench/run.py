@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -153,14 +152,18 @@ def _bench_case(case, warmup: int, iterations: int):
                 "reason": str(exc),
             }
         except Exception as exc:
-            impl = os.getenv("FORGE_SOFTMAX_IMPL", "auto")
+            backend = (
+                ops.get_softmax_online_backend()
+                if hasattr(ops, "get_softmax_online_backend")
+                else "unknown"
+            )
             return {
                 "status": "skipped",
                 "op": op_name,
                 "shape": shape,
                 "dtype": str(dtype).replace("torch.", ""),
                 "dim": dim,
-                "reason": f"softmax_online failed (impl={impl}): {exc}",
+                "reason": f"softmax_online failed (backend={backend}): {exc}",
             }
         return {
             "status": "ok",
