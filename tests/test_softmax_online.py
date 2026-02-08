@@ -1,8 +1,30 @@
+import importlib
+
 import pytest
 import torch
 
 from forge_cute_py.ops import softmax_online
 from forge_cute_py.ref import softmax_online as ref_softmax_online
+
+softmax_online_ops = importlib.import_module("forge_cute_py.ops.softmax_online")
+
+
+@pytest.fixture(autouse=True)
+def _reset_softmax_impl_env(monkeypatch):
+    monkeypatch.delenv("FORGE_SOFTMAX_IMPL", raising=False)
+
+
+def _patch_missing_kernel_module(monkeypatch):
+    original_import_module = softmax_online_ops.importlib.import_module
+
+    def missing_kernel_module(name, *args, **kwargs):
+        if name == "forge_cute_py.kernels.softmax_online":
+            exc = ModuleNotFoundError(f"No module named '{name}'")
+            exc.name = name
+            raise exc
+        return original_import_module(name, *args, **kwargs)
+
+    monkeypatch.setattr(softmax_online_ops.importlib, "import_module", missing_kernel_module)
 
 
 @pytest.mark.parametrize("shape", [(4, 8), (2, 128)])
@@ -53,6 +75,53 @@ def test_softmax_online_torch_compile(shape, dim, dtype, atol, rtol):
         pytest.skip(f"torch.compile unsupported for softmax_online op: {exc}")
     y_ref = ref_softmax_online(x, dim=dim)
     torch.testing.assert_close(y, y_ref, atol=atol, rtol=rtol)
+
+
+def test_softmax_online_auto_falls_back_to_ref_when_kernel_missing(monkeypatch):
+    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "auto")
+    _patch_missing_kernel_module(monkeypatch)
+
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x, dim=-1)
+    torch.testing.assert_close(y, y_ref, atol=1e-2, rtol=1e-2)
+
+
+def test_softmax_online_kernel_mode_requires_kernel(monkeypatch):
+    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "kernel")
+    _patch_missing_kernel_module(monkeypatch)
+
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    with pytest.raises(NotImplementedError, match="FORGE_SOFTMAX_IMPL=kernel"):
+        softmax_online(x, dim=-1)
+
+
+def test_softmax_online_ref_mode_skips_kernel_probe(monkeypatch):
+    import_called = {"value": False}
+    original_import_module = softmax_online_ops.importlib.import_module
+
+    def tracking_import(name, *args, **kwargs):
+        if name == "forge_cute_py.kernels.softmax_online":
+            import_called["value"] = True
+            raise AssertionError("Kernel module should not be imported in ref mode")
+        return original_import_module(name, *args, **kwargs)
+
+    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "ref")
+    monkeypatch.setattr(softmax_online_ops.importlib, "import_module", tracking_import)
+
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    y = softmax_online(x, dim=-1)
+    y_ref = ref_softmax_online(x, dim=-1)
+
+    assert import_called["value"] is False
+    torch.testing.assert_close(y, y_ref, atol=1e-2, rtol=1e-2)
+
+
+def test_softmax_online_rejects_invalid_impl_mode(monkeypatch):
+    monkeypatch.setenv("FORGE_SOFTMAX_IMPL", "unknown")
+    x = torch.randn(4, 8, device="cuda", dtype=torch.float16)
+    with pytest.raises(ValueError, match="FORGE_SOFTMAX_IMPL"):
+        softmax_online(x, dim=-1)
 
 
 @pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32])

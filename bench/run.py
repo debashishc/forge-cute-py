@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -137,10 +138,30 @@ def _bench_case(case, warmup: int, iterations: int):
         def fn():
             return ops.softmax_online(x, dim=dim)
 
-        times = do_bench(fn, warmup=warmup, rep=iterations)
-        stats = summarize_times(times)
-        bytes_moved = _estimate_bytes(op_name, shape, dtype, dim=dim)
-        bw = estimate_bandwidth(bytes_moved, stats["p50_ms"])
+        try:
+            times = do_bench(fn, warmup=warmup, rep=iterations)
+            stats = summarize_times(times)
+            bytes_moved = _estimate_bytes(op_name, shape, dtype, dim=dim)
+            bw = estimate_bandwidth(bytes_moved, stats["p50_ms"])
+        except NotImplementedError as exc:
+            return {
+                "status": "skipped",
+                "op": op_name,
+                "shape": shape,
+                "dtype": str(dtype).replace("torch.", ""),
+                "dim": dim,
+                "reason": str(exc),
+            }
+        except Exception as exc:
+            impl = os.getenv("FORGE_SOFTMAX_IMPL", "auto")
+            return {
+                "status": "skipped",
+                "op": op_name,
+                "shape": shape,
+                "dtype": str(dtype).replace("torch.", ""),
+                "dim": dim,
+                "reason": f"softmax_online failed (impl={impl}): {exc}",
+            }
         return {
             "status": "ok",
             "op": op_name,

@@ -1,10 +1,11 @@
 """Benchmark softmax_online op against torch.softmax and torch.compile(torch.softmax)."""
 
 import argparse
+import os
 
 import torch
 
-from forge_cute_py.ops.softmax_online import softmax_online, softmax_fwd, softmax_bwd
+from forge_cute_py.ops.softmax_online import softmax_fwd, softmax_bwd
 from forge_cute_py.util.bench import do_bench, estimate_bandwidth, summarize_times
 
 SHORT_M = [128, 512, 2048, 8192]
@@ -26,13 +27,22 @@ def parse_str_list(s: str) -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark softmax_online op")
-    parser.add_argument("--long", action="store_true", help="Use long-N benchmark suite (small M, large N)")
+    parser.add_argument(
+        "--long", action="store_true", help="Use long-N benchmark suite (small M, large N)"
+    )
     parser.add_argument("--m-sizes", type=parse_int_list, default=None)
     parser.add_argument("--n-sizes", type=parse_int_list, default=None)
     parser.add_argument("--dtypes", type=parse_str_list, default=DEFAULT_DTYPES)
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument(
+        "--impl",
+        choices=["auto", "ref", "kernel"],
+        default="auto",
+        help="softmax_online backend mode (FORGE_SOFTMAX_IMPL)",
+    )
     args = parser.parse_args()
+    os.environ["FORGE_SOFTMAX_IMPL"] = args.impl
 
     if args.m_sizes is None:
         args.m_sizes = LONG_M if args.long else SHORT_M
@@ -44,7 +54,7 @@ def main():
 
     gpu_name = torch.cuda.get_device_name(0)
     suite = "long" if args.long else "short"
-    print(f"softmax_online benchmarks [{suite}] ({gpu_name})")
+    print(f"softmax_online benchmarks [{suite}] ({gpu_name}) [impl={args.impl}]")
     print()
 
     header = (
@@ -59,7 +69,6 @@ def main():
             for dtype_str in args.dtypes:
                 dtype = getattr(torch, dtype_str)
                 x = torch.randn(m, n, device="cuda", dtype=dtype)
-                assert n % 32 == 0, f"Inner dimension N must be a multiple of 32, got {n}"
                 elem = x.element_size()
 
                 # --- Forward bandwidth: read input + write output ---

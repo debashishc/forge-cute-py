@@ -128,9 +128,16 @@ non-zero tolerance in tests.
 uv run python bench/run.py --suite smoke
 uv run python bench/benchmark_copy_transpose.py --tile-size 16
 uv run python bench/benchmark_reduce.py
+uv run python bench/benchmark_online_softmax.py --impl auto
+uv run python bench/benchmark_online_softmax.py --impl kernel
 modal run bench/modal_bench.py --suite smoke --out results.json
 modal run bench/modal_bench.py --suite smoke --op reduce_sum --out results.json
 ```
+
+`softmax_online` backend mode is controlled by `FORGE_SOFTMAX_IMPL`:
+- `auto` (default): try kernel if present, otherwise fallback to reference.
+- `ref`: force reference path.
+- `kernel`: require kernel path and fail fast if missing/incomplete.
 
 > **Warning:** Modal benchmarks incur GPU costs. Review `bench/modal_bench.py`
 > and verify timeout/GPU settings before running. Start with `--suite smoke`
